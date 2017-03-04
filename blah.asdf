@@ -1,0 +1,16 @@
+blah.asdf
+DrawSprite PROC uses ebx sprite:Sprite
+	mov ebx, sprite.angle
+
+	cmp ebx, 0
+	jz noRotation
+
+  noRotation:
+  	INVOKE
+
+  done:
+    INVOKE RotateBlit PROTO STDCALL ptrBitmap:PTR EECS205BITMAP, xcenter:DWORD, ycenter:DWORD, angle:FXPT
+
+
+	ret	
+DrawSprite ENDP
