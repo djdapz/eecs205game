@@ -26,6 +26,20 @@ PI_INC_RECIP =  5340353        	;;  Use reciprocal to find the table entry for a
 
 .CODE
 
+absVal PROC val:SDWORD ;RETURNS TO EAX
+    mov eax, val
+    and eax, 080000000h   ;see if sign bit is tripped
+    jz pos
+    mov eax, val
+    xor eax, 0ffffffffh   ;flip bits
+    add eax, 1             ;add 1
+    jmp done
+  pos:
+    mov eax, val
+  done:
+    ret
+absVal ENDP
+
 FixedDivide PROC uses ebx a_val:SDWORD, b_val:SDWORD
 	LOCAL neg_mask:DWORD, pos_mask:DWORD, a_sign:DWORD, b_sign:DWORD,  result_sign:DWORD
 

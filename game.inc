@@ -12,6 +12,11 @@ MouseInfo STRUCT
  buttons DWORD ?
 MouseInfo ENDS
 
+Camera STRUCT
+  left_x 				DWORD 0
+  right_x 			DWORD 027f0000h
+Camera ENDS
+
 
 
 MK_CONTROL  = 0008h  ;; The CTRL key is down.

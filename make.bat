@@ -45,8 +45,6 @@ if %errorlevel% neq 0 goto :error
 
 ml  /I%MASMINCPATH% /c  /coff  /Cp spritecontrol.asm
 
-
-
 if %errorlevel% neq 0 goto :error
 
 ml  /I%MASMINCPATH% /c  /coff  /Cp trig.asm
@@ -57,12 +55,16 @@ ml  /I%MASMINCPATH% /c  /coff  /Cp blit.asm
 
 if %errorlevel% neq 0 goto :error
 
+ml  /I%MASMINCPATH% /c  /coff  /Cp platform.asm
+
+if %errorlevel% neq 0 goto :error
+
 ml /I%MASMINCPATH% /c  /coff  /Cp game.asm
 
 if %errorlevel% neq 0 goto :error
 
 
-link /SUBSYSTEM:WINDOWS  /LIBPATH:%MASMLIBPATH% game.obj spritecontrol.obj blit.obj trig.obj lines.obj stars.obj bitmaps.obj libgame.obj
+link /SUBSYSTEM:WINDOWS  /LIBPATH:%MASMLIBPATH% game.obj spritecontrol.obj blit.obj platform.obj trig.obj lines.obj stars.obj bitmaps.obj libgame.obj
 
 if %errorlevel% neq 0 goto :error
 

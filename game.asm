@@ -14,6 +14,7 @@ include stars.inc
 include lines.inc
 include trig.inc
 include blit.inc
+include platform.inc
 include spritecontrol.inc
 include game.inc
 
@@ -24,114 +25,122 @@ include keys.inc
 .DATA
 	;; If you need to, you can place global variables here
 
-	backgroundSprite  	Sprite <>
-	bradySprite 		Sprite <>
-	otherBradySprite 		Sprite <>
+
+
+
+	backgroundSprite  Sprite <>
+	bradySprite 			Sprite <>
+	otherBradySprite 	Sprite <>
 	firstPlatform 		Platform <>
-  switch DWORD 0
+	secondPlatform 		Platform <>
+	thirdPlatform 		Platform <>
+	camera 						Camera <>
+  switch  					DWORD 0
+	middle_line 			DWORD 01100000h
+	worlds_end  			DWORD 0f9c0000h
 
 .CODE
 
-absVal PROC val:SDWORD ;RETURNS TO EAX
-    mov eax, val
-    and eax, 080000000h   ;see if sign bit is tripped
-    jz pos
-    mov eax, val
-    xor eax, 0ffffffffh   ;flip bits
-    add eax, 1             ;add 1
-    jmp done
-  pos:
-    mov eax, val
-  done:
-    ret
-absVal ENDP
 
-
+CheckIntersect PROC oneX:DWORD, oneY:DWORD, oneBitmap:PTR EECS205BITMAP, twoX:DWORD, twoY:DWORD, twoBitmap:PTR EECS205BITMAP
+;ignore this
+	ret
+CheckIntersect ENDP
 
 ;; Note: You will need to implement CheckIntersect!!!
 
-CheckIntersect PROC uses ebx oneX:DWORD, oneY:DWORD, oneBitmap:PTR EECS205BITMAP, twoX:DWORD, twoY:DWORD, twoBitmap:PTR EECS205BITMAP
-    local dist_vert:DWORD, dist_horz:DWORD, sum_horz:DWORD, sum_vert:DWORD
+GlobalSpriteToCamera PROC uses ebx sprite:PTR Sprite
+	mov esi, sprite
+	mov eax, (Sprite PTR[esi]).global_x
+	sub eax, camera.left_x
 
-    mov esi, oneBitmap
-    mov eax, (EECS205BITMAP PTR[esi]).dwHeight
-    mov esi, twoBitmap
-    add eax, (EECS205BITMAP PTR[esi]).dwHeight
-    shl eax, 15       ;convert to FIXED,but divide by 2
-    mov sum_vert, eax
+	mov (Sprite PTR[esi]).x_pos, eax
 
-    mov esi, oneBitmap
-    mov eax, (EECS205BITMAP PTR[esi]).dwWidth
-    mov esi, twoBitmap
-    add eax, (EECS205BITMAP PTR[esi]).dwWidth
-    shl eax, 15       ;convert to FIXED, but divide by 2
-    mov sum_horz, eax
+	ret
+GlobalSpriteToCamera ENDP
 
-    mov eax, oneX
-    sub eax, twoX
-    INVOKE absVal, eax    ;dist_horz = abs(oneX - twoX)
-    mov dist_horz, eax
+GlobalPlatformToCamera PROC uses ebx platform:PTR Platform
+	mov esi, platform
+	mov eax,  (Platform PTR[esi]).global_x
+	sub eax, camera.left_x
 
-    mov eax, oneY
-    sub eax, twoY
-    INVOKE absVal, eax    ;dist_vert = abs(oneY - twoY)
-    mov dist_vert, eax
+	mov  (Platform PTR[esi]).x_pos, eax
 
-    mov eax, dist_vert
-    cmp eax, sum_vert     ;if dist vert > sumVert - nocollision possible
-    jg  noCollision
+	ret
+GlobalPlatformToCamera ENDP
 
-    mov eax, dist_horz
-    cmp eax, sum_horz     ;if dist_horz > sum_horz, no collision bossible
-    jg  noCollision
+CheckCameraMovement PROC uses esi eax character:PTR Sprite
+	;; PASS MAIN CHARACTER
+	;;returns in eax the amount it moves
 
-    mov eax, 01h        ;return 1 if collision
-    jmp done
+		mov eax, camera.right_x
+		cmp eax, worlds_end
+		jge done        		;if the camera is at or past the world's end then camear cant move
 
-  noCollision:
-    mov eax, 0        ;return 0 if no collision
+		mov esi, character
+		mov eax, (Sprite PTR[esi]).global_x
+		sub eax, camera.left_x
+		sub eax, middle_line     	;find distance between char and middle line
+		cmp eax, 0 								;if the character is past the middle line, move camera instead of character
+		jle done
+		add camera.left_x, eax
+		add camera.right_x, eax
+		shr eax, 1
+		sub backgroundSprite.x_pos, eax
 
-  done:
-
-
-
-  ret
-CheckIntersect ENDP
+	checkBackground:
+		mov eax, backgroundSprite.x_pos				;move xposition of backgroundinto eax
+		cmp eax, 0fec00000h
+		jg done								;if if background is still in frame keep going
+		mov backgroundSprite.x_pos, 03bf0000h
 
 
-Render  PROC
+	done:
+
+		ret
+CheckCameraMovement ENDP
+
+
+Render  PROC USES eax
 	;DRAW BACKGROUND
 
-	mov eax,backgroundSprite.x_pos				;move xposition of backgroundinto eax
-	cmp eax, 0fec00000h
-	jg backgroundOK								;if if background is still in frame keep going
-	mov backgroundSprite.x_pos, 03bf0000h
 
-  backgroundOK:
+
+	INVOKE CheckCameraMovement, ADDR bradySprite
+
+	;localize all sprites
+	INVOKE GlobalSpriteToCamera, ADDR bradySprite
+	INVOKE GlobalSpriteToCamera, ADDR otherBradySprite
+ 	INVOKE GlobalPlatformToCamera, ADDR firstPlatform
+ 	INVOKE GlobalPlatformToCamera, ADDR secondPlatform
+ 	INVOKE GlobalPlatformToCamera, ADDR thirdPlatform
+
+
+
+	;DRAW BACKGROUND
 	INVOKE DrawSprite, backgroundSprite
 
   ;DRAW PLATFORMS
   INVOKE DrawPlatform, ADDR firstPlatform
+	INVOKE DrawPlatform, ADDR secondPlatform
+	INVOKE DrawPlatform, ADDR thirdPlatform
+
 
 	;DRAW CHARACTERS
-
   INVOKE DrawSprite, otherBradySprite
 	INVOKE DrawSprite, bradySprite
 
-	;DRAW PLATFORMS..EVENTUALLY
 
 	ret
 Render ENDP
 
 
-GameInit PROC
+
+
+GameInit PROC USES eax
 
 	;; LOAD POINTERS FOR BITMAPS INTO GLOBAL VARS FOR EASY ACCESS
 
-    lea eax, otherBradyBMP
-    mov bradySprite.pointer, eax
-    mov bradySprite.x_pos, 0c80000h	;x=200
-    mov bradySprite.y_pos, 0c80000h	;y=200
 
 
     lea eax, mountainsBMP
@@ -141,26 +150,41 @@ GameInit PROC
 
     lea eax, bradyBMP
     mov otherBradySprite.pointer, eax
-    mov otherBradySprite.x_pos, 02080000h	;x=479
+    mov otherBradySprite.global_x, 02080000h	;x=479
     mov otherBradySprite.y_pos, 0c80000h	;y=200
 
+		lea eax, otherBradyBMP
+		mov bradySprite.pointer, eax
+		mov bradySprite.global_x, 0c80000h	;x=200
+		mov bradySprite.y_pos, 0c80000h	;y=200
+
+
     lea eax, firstPlatform
-    mov firstPlatform.x_pos, 0c80000h  ; x=200
-    mov firstPlatform.y_pos, 01380000h ;y=318
+    mov firstPlatform.global_x, 0c80000h  ; x=200
+    mov firstPlatform.y_pos, 01900000h ;y=318
     mov firstPlatform.color, 0ddh
-    mov firstPlatform.p_height, 028h ; height = 100
+    mov firstPlatform.p_height, 021h ; height = 100
     mov firstPlatform.p_width, 0c8h ; width = 200
+
+		lea eax, secondPlatform
+		mov secondPlatform.global_x, 02080000h  ; x=200
+		mov secondPlatform.y_pos, 01000000h ;y=318
+		mov secondPlatform.color, 0edh
+		mov secondPlatform.p_height, 021h ; height = 100
+		mov secondPlatform.p_width, 0c8h ; width = 200
+
+		lea eax, thirdPlatform
+		mov thirdPlatform.global_x,  03500000h   ; x=200
+		mov thirdPlatform.y_pos, 01900000h ;y=318
+		mov thirdPlatform.color, 0f0h
+		mov thirdPlatform.p_height, 021h ; height = 100
+		mov thirdPlatform.p_width, 0208h ; width = 200
+
+
 
 
     ;DRAW BACKGROUND
-	INVOKE DrawSprite, backgroundSprite
-
-  ;DRAW PLATfORMS
-  INVOKE DrawPlatform, ADDR firstPlatform
-
-	;DRAW CHARACTER
-	INVOKE DrawSprite, bradySprite
-  INVOKE DrawSprite, otherBradySprite
+	INVOKE Render
 
 
 
@@ -168,13 +192,11 @@ GameInit PROC
 GameInit ENDP
 
 
-GamePlay PROC uses eax
+GamePlay PROC uses eax ebx
 
   checkKeyboard:
-	  cmp KeyPress, 0    ;;FOR NOW IF NO KEYS ARE PRESSED, DO NOTHING
-	  jz checkMouse     ;if nothing, jump away and scroll
+    INVOKE Keyboard_Check, ADDR bradySprite
 
-    INVOKE ChangeSpritePosition_Keyboard, ADDR bradySprite
   checkMouse:
     mov eax, MouseStatus.buttons
     cmp eax, 0
@@ -182,29 +204,22 @@ GamePlay PROC uses eax
 
     INVOKE ChangeSpritePosition_MOUSE, ADDR otherBradySprite
 
-
   checkCollisions:
 
-    INVOKE CheckIntersect, bradySprite.x_pos, bradySprite.y_pos, bradySprite.pointer, otherBradySprite.x_pos, otherBradySprite.y_pos, otherBradySprite.pointer
-    cmp eax, 0
-    je scroll
-
-    cmp switch, 0
-    je pos_1
-    mov switch, 0
-    mov otherBradySprite.x_pos, 0c80000h
-    mov otherBradySprite.y_pos, 0c80000h
-    jmp scroll
-
-  pos_1:
-    mov switch, 1
-    mov otherBradySprite.x_pos, 02080000h
-    mov otherBradySprite.y_pos, 0c80000h
+		INVOKE CheckSpritePlatformInteraction, ADDR bradySprite, ADDR firstPlatform
+		INVOKE CheckSpritePlatformInteraction, ADDR bradySprite, ADDR secondPlatform
+		INVOKE CheckSpritePlatformInteraction, ADDR bradySprite, ADDR thirdPlatform
 
   scroll:
-    mov eax, backgroundSprite.x_pos
-  	sub eax, 04ffffh						; subtract 4 pixels from position of the backgorund
-  	mov backgroundSprite.x_pos, eax
+
+    ;update velocites
+
+
+		;update positions
+		INVOKE UpdateSpritePositions, ADDR bradySprite
+		INVOKE UpdateSpriteVelocities, ADDR bradySprite
+
+
 
   	INVOKE Render
 
