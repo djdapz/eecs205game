@@ -157,9 +157,9 @@ Keyboard_Check PROC uses eax ebx esi spriteAddress:PTR Sprite
 	  ;figure out if it was an arrow key and route to correct move
 
 	checkJumping:
-		mov eax, MouseStatus.buttons
-		cmp eax, 0
-		je checkLeftRight 					;fall through if not equal
+		mov eax, KeyPress
+		cmp eax, VK_SPACE
+		jne checkLeftRight 					;fall through if not equal
 
 	jumping:		;check jump first so that if the user is already moving then jumping won't fuck it up
 		mov ebx, (Sprite PTR [esi]).jumping
@@ -173,13 +173,18 @@ Keyboard_Check PROC uses eax ebx esi spriteAddress:PTR Sprite
 
 
 	checkLeftRight:
-		mov eax, KeyPress
-		cmp eax, VK_RIGHT
-		jz 	moveRight
 
-		cmp eax, VK_LEFT
-		jz 	moveLeft
+		mov eax, MouseStatus.buttons
+		cmp eax, 0
+		je neitherPressed
 
+
+		mov eax, MouseStatus.horiz
+		mov ebx, (Sprite PTR [esi]).x_pos 		  ;put velocity in local  var
+		sar ebx, 16
+		cmp eax, ebx
+		jl moveLeft
+		jg moveRight
 		jmp neitherPressed
 
   moveLeft:
@@ -340,13 +345,22 @@ UpdateSpritePositions PROC USES esi eax ebx spriteAddress:PTR Sprite
 	checkVertical:
 		mov eax, (Sprite PTR [esi]).vertical_velocity
 		cmp eax, 0 					; if no vertical_velocity, do nothing
-		je done
+		je checkDead
 
 		mov ebx, (Sprite PTR [esi]).y_pos ; subtract to allow accelleration to be analagous to real world
+		mov (Sprite PTR[esi]).previous_y, ebx
 		sub ebx, eax
 		mov (Sprite PTR [esi]).y_pos, ebx
 
+
+	checkDead:
+		mov ebx, (Sprite PTR [esi]).y_pos
+		cmp ebx, 01f40000h
+		jle done
+		mov (Sprite PTR [esi]).dead, 1
+
 	done:
+
 		ret
 UpdateSpritePositions ENDP
 
@@ -378,13 +392,13 @@ UpdateSpriteVelocities PROC USES esi spriteAddress:PTR Sprite
 UpdateSpriteVelocities ENDP
 
 
-CheckIntersectBetter PROC uses esi spriteOne:PTR Sprite, spriteTwo:PTR Sprite
+CheckIntersectBetter PROC uses esi spriteOne:PTR Sprite, spriteTwo:PTR Sprite, sprite_y:DWORD
     local dist_vert:DWORD, dist_horz:DWORD, sum_horz:DWORD, sum_vert:DWORD, oneX:DWORD, oneY:DWORD, oneBitmap:PTR EECS205BITMAP, twoX:DWORD, twoY:DWORD, twoBitmap:PTR EECS205BITMAP
 
 		mov esi, spriteOne
 		mov eax, (Sprite PTR[esi]).x_pos
     mov oneX, eax
-		mov eax, (Sprite PTR[esi]).y_pos
+		mov eax, sprite_y
     mov oneY, eax
 		mov eax, (Sprite PTR[esi]).pointer
     mov oneBitmap, eax
@@ -441,7 +455,39 @@ CheckIntersectBetter PROC uses esi spriteOne:PTR Sprite, spriteTwo:PTR Sprite
   	ret
 CheckIntersectBetter ENDP
 
-CheckIntersectSpriteAndPlatform PROC uses esi spriteOne:PTR Sprite, platform:PTR Platform
+SetSpriteOntopOfPlatform PROC uses eax ebx esi edi sprite:PTR Sprite, platform:PTR Platform
+	LOCAL desired_distance:DWORD
+
+	mov esi, sprite
+	mov edi, platform
+
+	mov eax, (Platform PTR[edi]).p_height
+	mov ebx, (Sprite PTR[esi]).pointer
+	mov ebx, (EECS205BITMAP PTR[ebx]).dwHeight
+	shr eax, 1    	;platform height/w
+	shr ebx, 1			;sprite height/2
+	add eax, ebx    ;	add together
+	sub eax, 1			;sub 1 do they're overlappoing
+	shl eax, 16 		;convert to fixed
+	mov desired_distance, eax
+
+	mov eax, (Platform PTR[edi]).y_pos
+	mov ebx, (Sprite PTR[esi]).y_pos
+
+	sub eax, ebx 		;eax = platform_y - sprite_y
+	mov ebx, desired_distance
+	sub ebx, eax 	;if desired idsatnce is already the distance, jump to done
+	jz done
+	mov eax, (Sprite PTR[esi]).y_pos	 		;otherweise subtract this distance from y_position of sprite
+	sub eax, ebx
+	mov (Sprite PTR[esi]).y_pos,	eax
+
+done:
+	ret
+SetSpriteOntopOfPlatform ENDP
+
+
+CheckIntersectSpriteAndPlatform PROC uses esi spriteOne:PTR Sprite, platform:PTR Platform, sprite_y:DWORD
     local platformBMP:EECS205BITMAP, platformSprite:Sprite
 
 		mov esi, platform
@@ -456,24 +502,65 @@ CheckIntersectSpriteAndPlatform PROC uses esi spriteOne:PTR Sprite, platform:PTR
 		mov eax, (Platform PTR[esi]).y_pos
 		mov platformSprite.y_pos, eax
 
-		INVOKE CheckIntersectBetter, spriteOne, ADDR platformSprite
+
+
+		INVOKE CheckIntersectBetter, spriteOne, ADDR platformSprite, sprite_y
 
 		ret
 CheckIntersectSpriteAndPlatform ENDP
 
 CheckSpritePlatformInteraction PROC uses eax esi sprite:PTR Sprite, platform:PTR Platform
+		local  tMinusOnePlatform:DWORD, tPlatform:DWORD, jumping:DWORD
 
 		mov esi, sprite
 
-		INVOKE CheckIntersectSpriteAndPlatform, sprite,  platform
-		cmp eax, 1
-		jne done
+		mov eax, (Sprite PTR[esi]).jumping
+		mov jumping, eax
 
+		mov eax, (Sprite PTR[esi]).previous_y
+		INVOKE CheckIntersectSpriteAndPlatform, sprite,  platform, eax
+		mov tMinusOnePlatform, eax
+
+		mov eax, (Sprite PTR[esi]).y_pos
+		INVOKE CheckIntersectSpriteAndPlatform, sprite,  platform, eax
+		mov tPlatform, eax
+
+
+	CONDITION_1: ;Walking along platform: IF(t-1 = intersect and t= intersect and jump=0) ==> stop_fall
+		cmp tMinusOnePlatform, 1
+		jne CONDITION_2
+		cmp tPlatform, 1
+		jne CONDITION_2
+		cmp jumping, 1
+		jne CONDITION_2
+		jmp stop_fall
+
+	CONDITION_2: ;Falling, no jump IF(jump==FALSE and Intersect = False)
+		cmp jumping, 0
+		jne CONDITION_3
+		cmp tPlatform, 0
+		jne CONDITION_3
+		jmp let_fall
+
+	CONDITION_3: ;Landing on Platform
+		cmp tPlatform, 1
+		jne let_fall
+		cmp tMinusOnePlatform, 0
+		jne let_fall
+		jmp stop_fall
+
+	stop_fall:
 		mov eax, (Sprite PTR[esi]).vertical_velocity
 		cmp eax, 0
 		jge done
 		mov (Sprite PTR[esi]).vertical_velocity, 0
 		mov (Sprite PTR[esi]).jumping, 0
+		INVOKE SetSpriteOntopOfPlatform, sprite, platform
+		jmp done
+
+
+	let_fall:
+
 
 		done:
 

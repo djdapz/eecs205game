@@ -26,11 +26,11 @@ include keys.inc
 	;; If you need to, you can place global variables here
 
 
-
-
 	backgroundSprite  Sprite <>
-	bradySprite 			Sprite <>
-	otherBradySprite 	Sprite <>
+	mainCharacter 		Sprite <>
+	squareBrady 			Sprite <>
+	pauseSprite 			Sprite <>
+	deadSprite        Sprite <>
 	firstPlatform 		Platform <>
 	secondPlatform 		Platform <>
 	thirdPlatform 		Platform <>
@@ -38,6 +38,10 @@ include keys.inc
   switch  					DWORD 0
 	middle_line 			DWORD 01100000h
 	worlds_end  			DWORD 0f9c0000h
+
+
+	paused 						DWORD 0
+	p_pressed 				DWORD 0
 
 .CODE
 
@@ -106,14 +110,15 @@ Render  PROC USES eax
 
 
 
-	INVOKE CheckCameraMovement, ADDR bradySprite
+	INVOKE CheckCameraMovement, ADDR mainCharacter
 
 	;localize all sprites
-	INVOKE GlobalSpriteToCamera, ADDR bradySprite
-	INVOKE GlobalSpriteToCamera, ADDR otherBradySprite
+	INVOKE GlobalSpriteToCamera, ADDR mainCharacter
+	INVOKE GlobalSpriteToCamera, ADDR squareBrady
  	INVOKE GlobalPlatformToCamera, ADDR firstPlatform
  	INVOKE GlobalPlatformToCamera, ADDR secondPlatform
  	INVOKE GlobalPlatformToCamera, ADDR thirdPlatform
+
 
 
 
@@ -127,13 +132,36 @@ Render  PROC USES eax
 
 
 	;DRAW CHARACTERS
-  INVOKE DrawSprite, otherBradySprite
-	INVOKE DrawSprite, bradySprite
+  INVOKE DrawSprite, squareBrady
+	INVOKE DrawSprite, mainCharacter
 
 
 	ret
 Render ENDP
 
+CheckPause PROC uses eax
+		mov eax, KeyPress
+		cmp eax, VK_P
+		je  PPRESSED
+		mov p_pressed, 0
+		jmp done
+	PPRESSED:
+		cmp p_pressed, 0
+		je toggle_pause
+		jmp done
+	toggle_pause:
+
+		mov p_pressed, 1
+		cmp paused, 0
+		je pauseGame
+		mov paused, 0
+		jmp done
+	pauseGame:
+		mov paused, 1
+
+	done:
+		ret
+CheckPause ENDP
 
 
 
@@ -141,39 +169,58 @@ GameInit PROC USES eax
 
 	;; LOAD POINTERS FOR BITMAPS INTO GLOBAL VARS FOR EASY ACCESS
 
-
+		mov camera.left_x, 0
+		mov camera.right_x, 027f0000h
 
     lea eax, mountainsBMP
     mov backgroundSprite.pointer, eax
     mov backgroundSprite.x_pos, 0fec00000h 	;x=319
     mov backgroundSprite.y_pos, 0dc0000h	;y=220
 
+		lea eax, deadBMP
+    mov deadSprite.pointer, eax
+    mov deadSprite.x_pos, 01400000h 	;x=319
+    mov deadSprite.y_pos, 0820000h	;y=220
+
+		lea eax, better_pause
+		mov pauseSprite.pointer, eax
+		mov pauseSprite.x_pos, 01400000h
+		mov pauseSprite.y_pos, 0820000h
+
     lea eax, bradyBMP
-    mov otherBradySprite.pointer, eax
-    mov otherBradySprite.global_x, 02080000h	;x=479
-    mov otherBradySprite.y_pos, 0c80000h	;y=200
+    mov squareBrady.pointer, eax
+    mov squareBrady.global_x, 02080000h	;x=479
+    mov squareBrady.y_pos, 0c80000h	;y=200
+		mov mainCharacter.previous_y, 0c80000h	;y=200
+		mov mainCharacter.jumping, 0	;y=200
+		mov mainCharacter.dead, 0	;y=200
+		mov mainCharacter.vertical_velocity, 0	;y=200
+		mov mainCharacter.angle, 0	;y=200
 
-		lea eax, otherBradyBMP
-		mov bradySprite.pointer, eax
-		mov bradySprite.global_x, 0c80000h	;x=200
-		mov bradySprite.y_pos, 0c80000h	;y=200
+		lea eax, PenguinStraight
+		mov mainCharacter.pointer, eax
+		mov mainCharacter.global_x, 0c80000h	;x=200
+		mov mainCharacter.y_pos, 0c80000h	;y=200
+		mov mainCharacter.previous_y, 0c80000h	;y=200
+		mov mainCharacter.jumping, 0	;y=200
+		mov mainCharacter.dead, 0	;y=200
+		mov mainCharacter.vertical_velocity, 0	;y=200
+		mov mainCharacter.angle, 0	;y=200
 
 
-    lea eax, firstPlatform
+
     mov firstPlatform.global_x, 0c80000h  ; x=200
     mov firstPlatform.y_pos, 01900000h ;y=318
     mov firstPlatform.color, 0ddh
     mov firstPlatform.p_height, 021h ; height = 100
     mov firstPlatform.p_width, 0c8h ; width = 200
 
-		lea eax, secondPlatform
 		mov secondPlatform.global_x, 02080000h  ; x=200
-		mov secondPlatform.y_pos, 01000000h ;y=318
+		mov secondPlatform.y_pos, 01100000h ;y=318
 		mov secondPlatform.color, 0edh
 		mov secondPlatform.p_height, 021h ; height = 100
 		mov secondPlatform.p_width, 0c8h ; width = 200
 
-		lea eax, thirdPlatform
 		mov thirdPlatform.global_x,  03500000h   ; x=200
 		mov thirdPlatform.y_pos, 01900000h ;y=318
 		mov thirdPlatform.color, 0f0h
@@ -182,33 +229,46 @@ GameInit PROC USES eax
 
 
 
-
     ;DRAW BACKGROUND
 	INVOKE Render
-
-
 
 	ret         ;; Do not delete this line!!!
 GameInit ENDP
 
 
+
 GamePlay PROC uses eax ebx
 
+	checkDead:
+		mov eax, mainCharacter.dead
+		cmp eax, 1
+		jne checkPause
+		INVOKE DrawSprite, deadSprite
+		mov eax, KeyPress
+		cmp eax, VK_R
+		jne  done
+		INVOKE GameInit
+
+	checkPause:
+		INVOKE CheckPause
+		cmp paused, 1
+		je gamePaused
+
   checkKeyboard:
-    INVOKE Keyboard_Check, ADDR bradySprite
+    INVOKE Keyboard_Check, ADDR mainCharacter
 
   checkMouse:
     mov eax, MouseStatus.buttons
     cmp eax, 0
     jz checkCollisions
 
-    INVOKE ChangeSpritePosition_MOUSE, ADDR otherBradySprite
+    INVOKE ChangeSpritePosition_MOUSE, ADDR squareBrady
 
   checkCollisions:
 
-		INVOKE CheckSpritePlatformInteraction, ADDR bradySprite, ADDR firstPlatform
-		INVOKE CheckSpritePlatformInteraction, ADDR bradySprite, ADDR secondPlatform
-		INVOKE CheckSpritePlatformInteraction, ADDR bradySprite, ADDR thirdPlatform
+		INVOKE CheckSpritePlatformInteraction, ADDR mainCharacter, ADDR firstPlatform
+		INVOKE CheckSpritePlatformInteraction, ADDR mainCharacter, ADDR secondPlatform
+		INVOKE CheckSpritePlatformInteraction, ADDR mainCharacter, ADDR thirdPlatform
 
   scroll:
 
@@ -216,13 +276,19 @@ GamePlay PROC uses eax ebx
 
 
 		;update positions
-		INVOKE UpdateSpritePositions, ADDR bradySprite
-		INVOKE UpdateSpriteVelocities, ADDR bradySprite
+		INVOKE UpdateSpritePositions, ADDR mainCharacter
+		INVOKE UpdateSpriteVelocities, ADDR mainCharacter
 
 
 
   	INVOKE Render
+		jmp done
 
+	gamePaused:
+		INVOKE DrawSprite, pauseSprite
+
+
+	done:
 	  ret         ;; Do not delete this line!!!
 GamePlay ENDP
 
