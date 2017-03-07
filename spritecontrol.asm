@@ -19,10 +19,15 @@ include keys.inc
 .DATA
 	;; If you need to, you can place global variables here
 
+	TWO_PI	= 411774                ;;  2 * PI
 .CODE
 
 DrawSprite PROC uses ebx sprite:Sprite
 	LOCAL x_pos:DWORD, y_pos:DWORD
+
+	mov ebx, sprite.dead
+	cmp ebx, 1
+	je done
 
 	mov ebx, sprite.x_pos		;shift the fixed x position to decimal x position
 	sar ebx, 16					;use arithmetic shift to preserve sign
@@ -197,10 +202,6 @@ Keyboard_Check PROC uses eax ebx esi spriteAddress:PTR Sprite
 
   neitherPressed:
 		mov (Sprite PTR [esi]).horizontal_velocity, 0
-
-
-
-
 
 	done:
 	  ret
@@ -567,6 +568,80 @@ CheckSpritePlatformInteraction PROC uses eax esi sprite:PTR Sprite, platform:PTR
 		;make sure it's on top of not inside of the ground
 		ret
 CheckSpritePlatformInteraction ENDP
+
+AnimateMainCharacter PROC uses eax esi sprite:PTR Sprite
+		mov esi, sprite
+
+		mov eax, (Sprite PTR[esi]).horizontal_velocity
+		cmp eax, 0
+		je Straight
+		jl Left
+		jg Right
+		jmp done
+	Straight:
+		mov eax, (Sprite PTR[esi]).straightBMP
+		mov (Sprite PTR[esi]).pointer, eax
+		jmp done
+	Left:
+		mov eax, (Sprite PTR[esi]).leftBMP
+		mov (Sprite PTR[esi]).pointer, eax
+		jmp done
+	Right:
+		mov eax, (Sprite PTR[esi]).rightBMP
+		mov (Sprite PTR[esi]).pointer, eax
+		jmp done
+
+	done:
+	ret
+AnimateMainCharacter ENDP
+
+CheckCharacterCupInteraction PROC uses esi ebx character:PTR Sprite, cup:PTR Sprite
+		mov esi, cup
+		mov eax, (Sprite PTR[esi]).dead
+		cmp eax, 1
+		jne checkIntersection
+		mov eax, 0
+		jmp done
+
+
+	checkIntersection:
+		mov edi, character
+		mov ebx, (Sprite PTR[edi]).y_pos
+
+		INVOKE CheckIntersectBetter, character, cup, ebx
+		cmp eax, 1
+		jne done
+		mov (Sprite PTR[esi]).dead, 1
+		mov (Sprite PTR[edi]).flipping, 1
+
+	done:
+
+	ret
+CheckCharacterCupInteraction ENDP
+
+CheckCharacterFlipping PROC uses esi ebx eax character:PTR Sprite
+		mov esi, character
+
+		mov eax, (Sprite PTR[esi]).flipping
+		cmp eax, 1
+		jne done
+
+		mov ebx, (Sprite PTR[esi]).angle
+		mov eax, (Sprite PTR[esi]).angular_velocity
+		add ebx, eax
+
+		cmp ebx, TWO_PI
+		jl angleOK
+		mov (Sprite PTR[esi]).angle, 0
+		mov (Sprite PTR[esi]).flipping, 0
+		jmp done
+
+	angleOK:
+		mov (Sprite PTR[esi]).angle, ebx
+
+	done:
+		ret
+CheckCharacterFlipping ENDP
 
 
 END

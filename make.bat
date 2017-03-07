@@ -49,12 +49,9 @@ if %errorlevel% neq 0 goto :error
 
 ml  /I%MASMINCPATH% /c  /coff  /Cp trig.asm
 
-
-
 if %errorlevel% neq 0 goto :error
 
 ml  /I%MASMINCPATH% /c  /coff  /Cp blit.asm
-
 
 if %errorlevel% neq 0 goto :error
 
